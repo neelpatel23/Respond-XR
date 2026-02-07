@@ -1,5 +1,5 @@
 // services/gemini.ts
-import { API_CONFIG, isApiKeyConfigured } from "../config/api";
+import { API_CONFIG } from "../config/api";
 
 export interface DetectionResult {
   x: number; y: number; width: number; height: number;
@@ -21,7 +21,10 @@ class GeminiService {
   private readonly GEMINI_2_5_PRO = "models/gemini-2.5-pro";
 
   constructor() {
-    this.apiKey = API_CONFIG.GEMINI_API_KEY;
+    this.apiKey = API_CONFIG.GEMINI_API_KEY || "";
+    if (!this.apiKey) {
+      console.warn("Gemini API key not configured. Set EXPO_PUBLIC_GEMINI_API_KEY in .env");
+    }
   }
 
   /**
@@ -51,10 +54,10 @@ class GeminiService {
     imageBase64: string,
     mode: "airway" | "cpr" | "pulse" | "seizure"
   ): Promise<GeminiResponse> {
-    if (!isApiKeyConfigured()) {
-      console.warn("Gemini API key not configured, using fallback response");
-      return this.getFallbackResponse(mode);
-    }
+    // if (!isApiKeyConfigured()) {
+    //   console.warn("Gemini API key not configured, using fallback response");
+    //   return this.getFallbackResponse(mode);
+    // }
 
     console.log("🎯 XR Feature: No rate limiting - making immediate API call");
 
@@ -303,47 +306,136 @@ class GeminiService {
   }
 
   /**
-   * Convert speech to text using Gemini Speech-to-Text API
+   * Convert speech to text using Gemini's multimodal API (audio understanding)
+   * Uses the same API key as the rest of the app - no separate Speech API needed.
    */
-  async speechToText(audioBase64: string): Promise<string> {
+  async speechToText(audioBase64: string, mimeType: string = 'audio/mp4'): Promise<string> {
     try {
-      console.log('🎤 Converting speech to text with Gemini...');
-      
+      console.log('🎤 Transcribing audio with Gemini multimodal API...');
+
+      const requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: audioBase64,
+                },
+              },
+              {
+                text: 'Transcribe the speech in this audio. Return only the exact words spoken, nothing else. If there is no speech, return "silence".',
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1024,
+        },
+      };
+
       const response = await fetch(
-        `https://speech.googleapis.com/v1/speech:recognize?key=${this.apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('Gemini STT API error:', response.status, errText);
+        throw new Error(`Gemini transcription error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+      // Normalize "silence" or empty responses
+      const transcript = text.toLowerCase() === 'silence' ? '' : text;
+      console.log('✅ Gemini transcription result:', transcript || '(empty)');
+      return transcript;
+    } catch (error) {
+      console.error('❌ Gemini transcription error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate text from Gemini - robust with retries, model fallback, and error handling.
+   * Used by voice assistant and other text-generation features.
+   */
+  async generateText(
+    prompt: string,
+    options?: { maxTokens?: number; temperature?: number }
+  ): Promise<string> {
+    if (!this.apiKey?.trim()) {
+      console.warn("Gemini API key not set");
+      throw new Error("API key not configured");
+    }
+
+    const maxTokens = Math.min(options?.maxTokens ?? 1024, 8192);
+    const temperature = Math.max(0, Math.min(1, options?.temperature ?? 0.1));
+    const models = ["models/gemini-2.5-flash", "models/gemini-1.5-flash", "models/gemini-1.5-pro"];
+
+    const makeRequest = async (model: string): Promise<string> => {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${this.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            config: {
-              encoding: 'WEBM_OPUS',
-              sampleRateHertz: 48000,
-              languageCode: 'en-US',
-              model: 'latest_long',
-            },
-            audio: {
-              content: audioBase64,
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature,
+              maxOutputTokens: maxTokens,
             },
           }),
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`Gemini STT API error: ${response.status}`);
+      const body = await response.text();
+      let data: Record<string, unknown>;
+      try {
+        data = body ? JSON.parse(body) : {};
+      } catch {
+        data = {};
       }
 
-      const data = await response.json();
-      const transcript = data.results?.[0]?.alternatives?.[0]?.transcript || '';
-      
-      console.log('✅ Gemini STT result:', transcript);
-      return transcript;
-      
-    } catch (error) {
-      console.error('❌ Gemini STT error:', error);
-      throw error;
+      if (!response.ok) {
+        const err = data as { error?: { message?: string; code?: number } };
+        const errMsg = err?.error?.message || body?.slice(0, 200) || `HTTP ${response.status}`;
+        console.warn(`Gemini ${model} error:`, response.status, errMsg);
+        throw new Error(errMsg);
+      }
+
+      const cand = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0];
+      const text = cand?.content?.parts?.[0]?.text?.trim() || "";
+      return text;
+    };
+
+    let lastError: Error | null = null;
+    for (const model of models) {
+      try {
+        const result = await makeRequest(model);
+        if (result) return result;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const msg = lastError.message;
+        const is400 = msg.includes("400") || msg.includes("Invalid") || msg.includes("not found");
+        if (is400) continue; // try next model
+        const isRetryable = msg.includes("429") || msg.includes("503") || msg.includes("500");
+        if (isRetryable) {
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        throw lastError;
+      }
     }
+    if (lastError) throw lastError;
+    return "";
   }
 
   /**

@@ -7,15 +7,18 @@ import {
   View,
   ActivityIndicator,
 } from 'react-native';
+import { colors, spacing, borderRadius, typography } from '../constants/theme';
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { geminiService } from '../services/gemini';
 
 interface SimpleCPRVoiceButtonProps {
-  // No API keys needed - using Gemini service
+  compact?: boolean;
+  /** Minimal styling - no strong background, fits inline with other buttons */
+  inline?: boolean;
 }
 
-
-export const SimpleCPRVoiceButton: React.FC<SimpleCPRVoiceButtonProps> = () => {
+export const SimpleCPRVoiceButton: React.FC<SimpleCPRVoiceButtonProps> = ({ compact, inline }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -144,29 +147,39 @@ export const SimpleCPRVoiceButton: React.FC<SimpleCPRVoiceButtonProps> = () => {
     try {
       setIsProcessing(true);
 
-      // Step 1: Convert audio to base64 for Gemini STT
-      const response = await fetch(audioUri);
-      const audioBlob = await response.blob();
-      const audioBase64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (typeof reader.result === 'string') {
-            // Remove data URL prefix to get just the base64
-            const base64 = reader.result.split(',')[1];
-            resolve(base64);
-          } else {
-            reject(new Error('Failed to convert audio to base64'));
-          }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(audioBlob);
-      });
+      // Step 1: Read audio file as base64
+      let audioBase64: string;
+      let mimeType = 'audio/mp4'; // expo-av m4a = AAC in MP4 container
 
-      // Step 2: Speech to Text with Gemini API
-      const text = await geminiService.speechToText(audioBase64);
-      
+      if (audioUri.startsWith('file://')) {
+        // Native: use expo-file-system (expo-av records m4a on iOS, m4a/3gp on Android)
+        audioBase64 = await FileSystem.readAsStringAsync(audioUri, {
+          encoding: 'base64',
+        });
+        const pathLower = audioUri.toLowerCase();
+        if (pathLower.endsWith('.m4a') || pathLower.endsWith('.mp4')) mimeType = 'audio/mp4';
+        else if (pathLower.endsWith('.mp3')) mimeType = 'audio/mp3';
+        else if (pathLower.endsWith('.wav')) mimeType = 'audio/wav';
+      } else {
+        // Web: fetch blob and convert to base64
+        const response = await fetch(audioUri);
+        const blob = await response.blob();
+        audioBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result?.includes(',') ? result.split(',')[1] : result);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      // Step 2: Speech to Text with Gemini multimodal API
+      const text = await geminiService.speechToText(audioBase64, mimeType);
+
       if (!text.trim()) {
-        Alert.alert('Error', 'No speech recognized.');
+        Alert.alert('No speech detected', 'Try speaking clearly and try again. Make sure you\'re in a quiet environment.');
         setIsProcessing(false);
         return;
       }
@@ -183,59 +196,61 @@ export const SimpleCPRVoiceButton: React.FC<SimpleCPRVoiceButtonProps> = () => {
     }
   };
 
+  // Fallback response when API is unavailable
+  const getFallbackResponse = (question: string): string => {
+    const q = question.toLowerCase();
+    if (q.includes('cpr') || q.includes('heart') || q.includes('unconscious')) {
+      return 'For CPR: Call 911 first. Place the person on their back. Put the heel of one hand on the center of their chest, place your other hand on top. Push hard and fast, 2 inches deep, 100 to 120 times per minute. After 30 compressions, give 2 rescue breaths. Continue until help arrives.';
+    }
+    if (q.includes('choking') || q.includes('airway')) {
+      return 'For choking: Call 911. Stand behind the person, wrap your arms around their waist. Make a fist with one hand, place it above their navel. Grab your fist with your other hand and give quick upward thrusts. Repeat until the object is dislodged or help arrives.';
+    }
+    if (q.includes('bleeding') || q.includes('blood')) {
+      return 'For severe bleeding: Call 911. Apply direct pressure with a clean cloth or gauze. Keep pressure on the wound for at least 10 minutes. If blood soaks through, add more cloth on top—do not remove the first layer. Elevate the injured area if possible.';
+    }
+    return 'In any emergency, call 911 first. Stay calm and follow the dispatcher\'s instructions. For CPR: 30 compressions at 100-120 per minute, then 2 breaths. For choking: perform the Heimlich maneuver. If you need more specific guidance, please try again when the connection is better.';
+  };
+
   // Ask Gemini for CPR guidance and speak with Gemini TTS
   const askGemini = async (question: string) => {
     try {
-      // Create a CPR-focused prompt for Gemini
       const cprPrompt = `You are an emergency CPR instructor helping save lives.
-Provide clear, concise, step-by-step CPR instructions. if the situation sounds like an emergancy, get right to the point
+Provide clear, concise, step-by-step CPR instructions. If the situation sounds like an emergency, get right to the point.
 Always remind users to call 911 first in a real emergency.
 Use simple, calm language that anyone can follow under stress.
 For CPR: 30 compressions (2 inches deep, 100-120 per minute), then 2 breaths.
 
 User question: ${question}
 
-Provide a helpful response:`;
+Provide a helpful response (2-4 short paragraphs max):`;
 
-      // Use Gemini for the medical response
-      const { GEMINI_API_KEY } = await import('../constants/config');
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: cprPrompt }]
-            }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: maxTokens,
-            }
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status}`);
+      let reply = '';
+      try {
+        reply = await geminiService.generateText(cprPrompt, { maxTokens });
+      } catch (apiErr) {
+        console.warn('Gemini API failed, using fallback:', apiErr);
+        reply = getFallbackResponse(question);
       }
 
-      const data = await response.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
-      
-      // Log token usage for monitoring
-      console.log(`📊 Used ${maxTokens} maxOutputTokens for this response`);
-      
-      setGeminiResponse(reply);
+      const finalReply = reply.trim() || getFallbackResponse(question);
+      setGeminiResponse(finalReply);
 
-      // Speak response with Gemini TTS
-      await speakWithGemini(reply);
-
+      try {
+        await speakWithGemini(finalReply);
+      } catch (ttsErr) {
+        console.warn('TTS failed, response still shown:', ttsErr);
+        // User still sees the text
+      }
     } catch (err) {
-      console.error('Gemini error:', err);
-      Alert.alert('Error', 'Failed to get response from Gemini.');
+      console.error('Voice assistant error:', err);
+      const fallback = getFallbackResponse(question);
+      setGeminiResponse(fallback);
+      try {
+        await speakWithGemini(fallback);
+      } catch {
+        // At least they see the text
+      }
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -403,51 +418,54 @@ Provide a helpful response:`;
   // No helper functions needed - Gemini service handles everything
 
   return (
-    <View style={s.container}>
+    <View style={[s.container, compact && s.containerCompact, inline && s.containerInline]}>
       <TouchableOpacity
-        style={[s.button, isRecording && { backgroundColor: '#22c55e' }]}
+        style={[
+          s.button,
+          compact && s.buttonCompact,
+          inline && s.buttonInline,
+          isRecording && s.buttonRecording,
+        ]}
         onPress={isRecording ? stopRecording : startRecording}
         disabled={isProcessing}
       >
-        <Text style={s.buttonText} numberOfLines={1} adjustsFontSizeToFit>
-          {isRecording ? '🛑 Ask AI' : '🎤 Start Voice Assistant'}
+        <Text style={[s.buttonText, compact && s.buttonTextCompact]} numberOfLines={1} adjustsFontSizeToFit>
+          {isRecording ? '🛑 Ask AI' : '🎤 Voice Assistant'}
         </Text>
-        {!isRecording && (
+        {!compact && !isRecording && (
           <Text style={s.buttonSubtext}>Ask questions & get guidance</Text>
         )}
       </TouchableOpacity>
 
       {userQuestion !== '' && (
-        <View style={s.questionContainer}>
-          <Text style={s.label}>You said:</Text>
-          <Text style={s.questionText}>{userQuestion}</Text>
+        <View style={[s.questionContainer, compact && s.expandedCompact, inline && s.expandedInline]}>
+          <Text style={[s.label, compact && s.labelCompact]}>You:</Text>
+          <Text style={[s.questionText, compact && s.textCompact]} numberOfLines={compact ? 2 : undefined}>{userQuestion}</Text>
         </View>
       )}
 
       {(isProcessing || isPlaying) && (
-        <View style={s.loadingContainer}>
-          <ActivityIndicator size="large" color="#ef4444" />
-          <Text style={s.loadingText}>
+        <View style={[s.loadingContainer, compact && s.loadingCompact]}>
+          <ActivityIndicator size={compact ? 'small' : 'large'} color={colors.primary} />
+          <Text style={[s.loadingText, compact && s.textCompact]}>
             {isPlaying ? '🔊 Speaking...' : 'Processing...'}
           </Text>
         </View>
       )}
 
       {geminiResponse !== '' && !isProcessing && (
-        <View style={s.responseContainer}>
-          <Text style={s.label}>CPR Instructor (Gemini):</Text>
-          <Text style={s.responseText}>{geminiResponse}</Text>
+        <View style={[s.responseContainer, compact && s.expandedCompact, inline && s.expandedInline]}>
+          <Text style={[s.label, compact && s.labelCompact]}>AI:</Text>
+          <Text style={[s.responseText, compact && s.textCompact]} numberOfLines={compact ? 4 : undefined}>{geminiResponse}</Text>
         </View>
       )}
 
       {(userQuestion !== '' || geminiResponse !== '' || isPlaying) && (
         <TouchableOpacity 
-          style={[s.clearButton, isPlaying && s.clearButtonActive]} 
+          style={[s.clearButton, compact && s.clearButtonCompact, isPlaying && s.clearButtonActive]} 
           onPress={clearChat}
         >
-          <Text style={[s.clearButtonText, isPlaying && s.clearButtonTextActive]}>
-            {isPlaying ? '🛑' : '✕'}
-          </Text>
+          <Text style={[s.clearButtonText, isPlaying && s.clearButtonTextActive]}>{isPlaying ? '🛑' : '✕'}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -455,86 +473,134 @@ Provide a helpful response:`;
 };
 
 const s = StyleSheet.create({
-  container: { width: '100%', alignItems: 'center', gap: 16 },
+  container: { width: '100%', alignItems: 'center', gap: spacing.md },
+  containerCompact: { gap: spacing.xs },
+  containerInline: { width: '100%' },
   button: {
-    backgroundColor: '#ef4444',
-    paddingVertical: 28,
-    paddingHorizontal: 50,
-    borderRadius: 26,
-    minWidth: 320,
+    backgroundColor: colors.accentMuted,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
+    width: '100%',
     alignItems: 'center',
-    shadowColor: '#ef4444',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 15,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: colors.border,
   },
-  buttonText: { color: '#fff', fontSize: 22, fontWeight: '900' },
+  buttonCompact: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  buttonInline: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 52,
+  },
+  buttonRecording: {
+    backgroundColor: colors.successMuted,
+    borderColor: colors.success,
+  },
+  buttonText: { 
+    ...typography.label, 
+    color: colors.text,
+    fontSize: 16 
+  },
+  buttonTextCompact: {
+    fontSize: 13,
+  },
   buttonSubtext: { 
-    color: 'rgba(255, 255, 255, 0.8)', 
-    fontSize: 12, 
-    fontWeight: '600',
-    marginTop: 2,
+    ...typography.caption, 
+    color: colors.textSecondary, 
+    marginTop: 4,
+    fontWeight: '500',
   },
   questionContainer: {
     width: '100%',
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: colors.accentMuted,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#3b82f6',
+    borderColor: colors.border,
+  },
+  expandedCompact: {
+    padding: spacing.sm,
+    maxHeight: 80,
+  },
+  expandedInline: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingHorizontal: 0,
   },
   responseContainer: {
     width: '100%',
-    backgroundColor: 'rgba(34, 197, 94, 0.2)',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: colors.successMuted,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#22c55e',
+    borderColor: colors.border,
   },
-  label: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#374151' },
-  questionText: { fontSize: 16, color: '#1e40af', lineHeight: 24 },
-  responseText: { fontSize: 16, color: '#166534', lineHeight: 24 },
-  loadingContainer: { alignItems: 'center', gap: 8 },
-  loadingText: { fontSize: 16, color: '#ef4444', fontWeight: '600' },
+  label: { 
+    ...typography.caption, 
+    marginBottom: spacing.sm, 
+    color: colors.textSecondary 
+  },
+  labelCompact: {
+    marginBottom: spacing.xs,
+    fontSize: 10,
+  },
+  questionText: { 
+    ...typography.body, 
+    color: colors.accent 
+  },
+  responseText: { 
+    ...typography.body, 
+    color: colors.text 
+  },
+  textCompact: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  loadingContainer: { alignItems: 'center', gap: spacing.sm },
+  loadingCompact: { gap: spacing.xs },
+  loadingText: { 
+    ...typography.body, 
+    color: colors.primary, 
+    fontWeight: '600' 
+  },
   clearButton: {
     position: 'absolute',
-    top: -22,
-    right: -22,
-    width: 44,
-    height: 44,
-    backgroundColor: 'rgba(220, 38, 38, 0.9)',
-    borderRadius: 22,
+    top: -12,
+    right: -12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  clearButtonCompact: {
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
   },
   clearButtonActive: {
-    backgroundColor: 'rgba(185, 28, 28, 0.95)',
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 12,
+    backgroundColor: colors.dangerMuted,
+    borderColor: colors.danger,
   },
   clearButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 20,
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 14,
   },
   clearButtonTextActive: {
-    fontSize: 18,
+    fontSize: 12,
   },
 });

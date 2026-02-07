@@ -18,7 +18,7 @@
       "distribution": "store",
       "ios": {
         "resourceClass": "m-medium",
-        "scheme": "Respond XR",
+        "scheme": "Aidra",
         "buildConfiguration": "Release",
         "enterpriseProvisioning": "universal"
       },
@@ -35,7 +35,7 @@
       "ios": {
         "simulator": true,
         "resourceClass": "m-medium",
-        "scheme": "Respond XR",
+        "scheme": "Aidra",
         "buildConfiguration": "Release"
       }
     }

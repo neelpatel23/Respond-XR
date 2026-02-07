@@ -1,106 +1,87 @@
 // app/(tabs)/_layout.tsx
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { View, Image, StyleSheet, TouchableOpacity, Text } from "react-native";
+import { View, StyleSheet, TouchableOpacity, Text } from "react-native";
+import { colors, spacing, borderRadius } from "../../constants/theme";
 
 export default function TabsLayout() {
   const CustomTabBar = ({ state, descriptors, navigation }: any) => {
     const elements: JSX.Element[] = [];
-    
-    // First tab (Emergency)
+
     const firstRoute = state.routes[0];
     const firstOptions = descriptors[firstRoute.key].options;
-    const firstLabel = firstOptions.tabBarLabel !== undefined ? firstOptions.tabBarLabel : firstOptions.title !== undefined ? firstOptions.title : firstRoute.name;
+    const firstLabel = firstOptions.tabBarLabel ?? firstOptions.title ?? firstRoute.name;
     const firstIsFocused = state.index === 0;
-    
-    const firstOnPress = () => {
-      const event = navigation.emit({
-        type: 'tabPress',
-        target: firstRoute.key,
-      });
-      
-      if (!firstIsFocused && !event.defaultPrevented) {
-        navigation.navigate(firstRoute.name);
-      }
-    };
 
     elements.push(
       <TouchableOpacity
         key={firstRoute.key}
-        onPress={firstOnPress}
-        style={styles.tabButton}
+        onPress={() => {
+          if (!firstIsFocused) navigation.navigate(firstRoute.name);
+        }}
+        style={[styles.tabButton, firstIsFocused && styles.tabButtonActive]}
       >
-        {firstOptions.tabBarIcon && firstOptions.tabBarIcon({ 
-          color: firstIsFocused ? "#2563eb" : "#64748b", 
-          size: 24 
-        })}
-        <Text style={[styles.tabLabel, { color: firstIsFocused ? "#2563eb" : "#64748b" }]}>
+        <Ionicons
+          name="medical-outline"
+          size={24}
+          color={firstIsFocused ? colors.primary : colors.textMuted}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            { color: firstIsFocused ? colors.primary : colors.textMuted },
+          ]}
+        >
           {firstLabel}
         </Text>
       </TouchableOpacity>
     );
 
-    // Logo in center
+    // Divider / spacer
     elements.push(
-      <View key="logo" style={styles.logoContainer}>
-        <Image 
-          source={require('../../assets/images/respondxr-logo.png')} 
-          style={styles.logo}
-          resizeMode="contain"
-        />
+      <View key="spacer" style={styles.spacer}>
+        <View style={styles.logoMark} />
       </View>
     );
 
-    // Second tab (Information)
     const secondRoute = state.routes[1];
     const secondOptions = descriptors[secondRoute.key].options;
-    const secondLabel = secondOptions.tabBarLabel !== undefined ? secondOptions.tabBarLabel : secondOptions.title !== undefined ? secondOptions.title : secondRoute.name;
+    const secondLabel = secondOptions.tabBarLabel ?? secondOptions.title ?? secondRoute.name;
     const secondIsFocused = state.index === 1;
-    
-    const secondOnPress = () => {
-      const event = navigation.emit({
-        type: 'tabPress',
-        target: secondRoute.key,
-      });
-      
-      if (!secondIsFocused && !event.defaultPrevented) {
-        navigation.navigate(secondRoute.name);
-      }
-    };
 
     elements.push(
       <TouchableOpacity
         key={secondRoute.key}
-        onPress={secondOnPress}
-        style={styles.tabButton}
+        onPress={() => {
+          if (!secondIsFocused) navigation.navigate(secondRoute.name);
+        }}
+        style={[styles.tabButton, secondIsFocused && styles.tabButtonActive]}
       >
-        {secondOptions.tabBarIcon && secondOptions.tabBarIcon({ 
-          color: secondIsFocused ? "#2563eb" : "#64748b", 
-          size: 24 
-        })}
-        <Text style={[styles.tabLabel, { color: secondIsFocused ? "#2563eb" : "#64748b" }]}>
+        <Ionicons
+          name="document-text-outline"
+          size={24}
+          color={secondIsFocused ? colors.accent : colors.textMuted}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            { color: secondIsFocused ? colors.accent : colors.textMuted },
+          ]}
+        >
           {secondLabel}
         </Text>
       </TouchableOpacity>
     );
 
-    return (
-      <View style={styles.tabContainer}>
-        {elements}
-      </View>
-    );
+    return <View style={styles.tabContainer}>{elements}</View>;
   };
 
   return (
     <Tabs
-      initialRouteName="emergency"   // open on Emergency
+      initialRouteName="emergency"
       tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{
-        headerShown: false,          // no headers from Tabs level
-        tabBarActiveTintColor: "#2563eb",
-      }}
+      screenOptions={{ headerShown: false }}
     >
-      {/* Tab points to the SEGMENT folder "emergency" */}
       <Tabs.Screen
         name="emergency"
         options={{
@@ -110,13 +91,12 @@ export default function TabsLayout() {
           ),
         }}
       />
-      {/* Tab points to the SEGMENT folder "history" */}
       <Tabs.Screen
         name="history"
         options={{
-          title: "Information",
+          title: "Info",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="information-circle-outline" size={size} color={color} />
+            <Ionicons name="document-text-outline" size={size} color={color} />
           ),
         }}
       />
@@ -126,36 +106,43 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#0b1220',
-    paddingBottom: 34, // For safe area
-    paddingTop: 8,
+    flexDirection: "row",
+    backgroundColor: colors.surface,
+    paddingBottom: spacing.xl + 10,
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "space-between",
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    borderTopColor: colors.border,
   },
   tabButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    minWidth: 80,
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  tabButtonActive: {
+    backgroundColor: colors.surfaceElevated,
   },
   tabLabel: {
     fontSize: 12,
+    fontWeight: "600",
     marginTop: 4,
-    textAlign: 'center',
   },
-  logoContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  spacer: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  logo: {
-    width: 80,
-    height: 30,
-    opacity: 0.7,
+  logoMark: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.primaryMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 });

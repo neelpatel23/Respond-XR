@@ -95,6 +95,13 @@ export const PulseInstructionOverlay: React.FC<PulseInstructionOverlayProps> = (
           technique: "2-3 fingers, light pressure",
           useCase: "Conscious patients",
         };
+      default:
+        return {
+          name: "Carotid Pulse",
+          location: "Side of neck",
+          technique: "2-3 fingers, gentle pressure",
+          useCase: "Emergency/Unconscious adults",
+        };
     }
   };
 
@@ -124,11 +131,11 @@ export const PulseInstructionOverlay: React.FC<PulseInstructionOverlayProps> = (
       <View style={[styles.statusHeader, { backgroundColor: getStatusColor() }]}>
         <View style={styles.statusContent}>
           <Text style={styles.statusTitle}>Pulse Check - {positionInfo.name}</Text>
-          {confidence && (
+          {confidence != null && confidence > 0 ? (
             <Text style={styles.confidenceText}>
               Confidence: {Math.round(confidence * 100)}%
             </Text>
-          )}
+          ) : null}
         </View>
         <View style={styles.headerActions}>
           {timerActive && (

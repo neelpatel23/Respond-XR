@@ -22,6 +22,7 @@ import {
   PulseTarget,
   PulsePosition,
 } from "../services/pulseDetection";
+import { colors, spacing, borderRadius } from "../constants/theme";
 import { PulseOverlay } from "./ar/PulseOverlay";
 import { PulseGuide } from "./ar/PulseGuide";
 import { PulseInstructionOverlay } from "./ar/PulseInstructionOverlay";
@@ -549,7 +550,7 @@ const getStatusColor = (status: PulseDetectionStatus): string => {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "black",
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
@@ -562,7 +563,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   needPerm: {
-    color: "#e5e7eb",
+    color: colors.textSecondary,
     fontSize: 16,
     marginBottom: 16,
     textAlign: "center",
@@ -571,23 +572,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "rgba(11, 18, 32, 0.9)",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(59, 130, 246, 0.3)",
+    borderBottomColor: colors.border,
   },
   backBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   backBtnText: {
-    color: "#3b82f6",
+    color: colors.accent,
     fontSize: 16,
     fontWeight: "600",
   },
   title: {
-    color: "white",
+    color: colors.text,
     fontSize: 18,
     fontWeight: "bold",
   },
@@ -602,22 +603,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bottomBar: {
-    backgroundColor: "rgba(11, 18, 32, 0.95)",
+    backgroundColor: colors.surface,
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: "rgba(59, 130, 246, 0.3)",
+    borderTopColor: colors.border,
   },
   controlRow: {
     marginBottom: 16,
   },
   pulseControls: {
-    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    backgroundColor: colors.surfaceElevated,
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
   },
   label: {
-    color: "white",
+    color: colors.text,
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 12,
@@ -638,7 +639,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   statusText: {
-    color: "#cbd5e1",
+    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: "600",
   },
@@ -654,28 +655,28 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   btnPrimary: {
-    backgroundColor: "#2563eb",
+    backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: "#3b82f6",
+    borderColor: colors.primary,
   },
   btnSuccess: {
-    backgroundColor: "#16a34a",
+    backgroundColor: colors.success,
     borderWidth: 1,
-    borderColor: "#22c55e",
+    borderColor: colors.success,
   },
   btnDanger: {
-    backgroundColor: "#dc2626",
+    backgroundColor: colors.danger,
     borderWidth: 1,
-    borderColor: "#ef4444",
+    borderColor: colors.danger,
   },
   btnSecondary: {
-    backgroundColor: "#6b7280",
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: "#9ca3af",
+    borderColor: colors.border,
     marginTop: 8,
   },
   btnTxt: {
-    color: "white",
+    color: colors.text,
     fontWeight: "800",
     fontSize: 14,
   },
@@ -684,7 +685,7 @@ const styles = StyleSheet.create({
     top: 20,
     left: 20,
     right: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: colors.surface + "cc",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -692,7 +693,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   frozenText: {
-    color: "white",
+    color: colors.text,
     fontSize: 14,
     fontWeight: "bold",
   },

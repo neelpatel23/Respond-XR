@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Respond XR",
-    "slug": "respond-xr",
+    "name": "Aidra",
+    "slug": "aidra",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/respondxr-logo.png",
@@ -26,12 +26,12 @@
           "audio"
         ],
         "ITSAppUsesNonExemptEncryption": false,
-        "NSSpeechRecognitionUsageDescription": "Speech recognition enables hands-free voice commands during emergency situations when precise operation is critical for Respond XR."
+        "NSSpeechRecognitionUsageDescription": "Speech recognition enables hands-free voice commands during emergency situations when precise operation is critical for Aidra."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0b1220",
+        "backgroundColor": "#07090d",
         "foregroundImage": "./assets/images/respondxr-logo.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/respondxr-logo.png"
